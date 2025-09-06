@@ -9,7 +9,93 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
     { type: 'received', text: 'This is what a message received looks like when it uses two lines' },
     { type: 'sent', text: 'This is what a message sent looks like when it uses two lines' }
   ])
+  const [currentVideo, setCurrentVideo] = useState(null)
+  const [videos, setVideos] = useState([])
+  const [loading, setLoading] = useState(false)
   const chatMessagesRef = useRef(null)
+  const videoRef = useRef(null)
+
+  // Fetch videos from API when component becomes active
+  useEffect(() => {
+    if (isActive && videos.length === 0) {
+      fetchVideos()
+    }
+  }, [isActive])
+
+  // Auto-load Zodiac video when videos are fetched
+  useEffect(() => {
+    if (videos.length > 0 && !currentVideo) {
+      const zodiacVideo = videos.find(video => video.name.toLowerCase().includes('zodiac'))
+      if (zodiacVideo) {
+        setCurrentVideo(zodiacVideo)
+        addChatMessage(`🎬 Now playing: ${zodiacVideo.name}`, 'system')
+      }
+    }
+  }, [videos, currentVideo])
+
+  const fetchVideos = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch('http://localhost:8080/api/videos')
+      if (response.ok) {
+        const videoList = await response.json()
+        setVideos(videoList)
+        console.log('Videos loaded:', videoList)
+      } else {
+        console.error('Failed to fetch videos:', response.status)
+        addChatMessage('❌ Failed to load videos from server', 'system')
+      }
+    } catch (error) {
+      console.error('Error fetching videos:', error)
+      addChatMessage('❌ Could not connect to video server', 'system')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const addChatMessage = (text, type = 'sent') => {
+    const newMessage = { type, text }
+    setMessages(prev => [...prev, newMessage])
+    
+    // Scroll to bottom
+    setTimeout(() => {
+      if (chatMessagesRef.current) {
+        chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight
+      }
+    }, 100)
+  }
+
+  const updateContainerAspectRatio = (aspectRatio) => {
+    // Update the page-items container to match video aspect ratio
+    const pageItemsElement = document.getElementById('page-items')
+    if (pageItemsElement && aspectRatio && aspectRatio > 0) {
+      // Store the original aspect ratio for when chat is closed
+      pageItemsElement.setAttribute('data-video-aspect-ratio', aspectRatio.toString())
+      
+      if (!isChatVisible) {
+        // Only update aspect ratio when chat is not visible
+        pageItemsElement.style.aspectRatio = aspectRatio.toString()
+      }
+      
+      console.log('Updated container aspect ratio to:', aspectRatio.toFixed(3))
+    }
+  }
+
+  // Update aspect ratio when chat visibility changes
+  useEffect(() => {
+    const pageItemsElement = document.getElementById('page-items')
+    if (pageItemsElement) {
+      const videoAspectRatio = parseFloat(pageItemsElement.getAttribute('data-video-aspect-ratio'))
+      
+      if (isChatVisible) {
+        // When chat is visible, use the original wider aspect ratio
+        pageItemsElement.style.aspectRatio = '2919/1277'
+      } else if (videoAspectRatio && videoAspectRatio > 0) {
+        // When chat is hidden, use the video's aspect ratio
+        pageItemsElement.style.aspectRatio = videoAspectRatio.toString()
+      }
+    }
+  }, [isChatVisible])
 
   // Keyboard shortcuts for chat
   useEffect(() => {
@@ -37,16 +123,8 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
 
   const handleChatSubmit = (e) => {
     if (e.key === 'Enter' && chatMessage.trim()) {
-      const newMessage = { type: 'sent', text: chatMessage.trim() }
-      setMessages(prev => [...prev, newMessage])
+      addChatMessage(chatMessage.trim(), 'sent')
       setChatMessage('')
-      
-      // Scroll to bottom
-      setTimeout(() => {
-        if (chatMessagesRef.current) {
-          chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight
-        }
-      }, 100)
     }
   }
 
@@ -63,7 +141,9 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
         <div className="top-bar">
           <div className="breadcrumb-trail">
             <a href="#" className="home">Home</a>
-            <a href="#" className="video-party">Video Party</a>
+            <a href="#" className="video-party">
+              {currentVideo ? currentVideo.name : 'Video Party'}
+            </a>
           </div>
           
           <div className="right-side-buttons">
@@ -91,9 +171,78 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
           </div>
         </div>
         
-        <div className={`page-items ${isChatVisible ? 'chat-visible' : ''}`}>
+        <div className={`page-items ${isChatVisible ? 'chat-visible' : ''}`} id="page-items">
           <div className="video-player">
-            <img className="video-placeholder" src="https://placehold.co/1165x681" alt="Video Player" />
+            {currentVideo ? (
+              <video 
+                ref={videoRef}
+                className="video-placeholder" 
+                src={`http://localhost:8080${currentVideo.url}`}
+                controls
+                autoPlay={false}
+                preload="metadata"
+                style={{ 
+                  width: '100%', 
+                  height: '100%', 
+                  objectFit: 'contain' // This will maintain aspect ratio
+                }}
+                onLoadStart={() => console.log('Video loading started')}
+                onLoadedData={() => {
+                  console.log('Video loaded successfully')
+                  // Log the video dimensions for debugging
+                  if (videoRef.current) {
+                    console.log('Video dimensions:', {
+                      videoWidth: videoRef.current.videoWidth,
+                      videoHeight: videoRef.current.videoHeight,
+                      aspectRatio: (videoRef.current.videoWidth / videoRef.current.videoHeight).toFixed(3)
+                    })
+                  }
+                }}
+                onLoadedMetadata={() => {
+                  // Update container aspect ratio when metadata loads
+                  if (videoRef.current) {
+                    const video = videoRef.current
+                    const aspectRatio = video.videoWidth / video.videoHeight
+                    
+                    updateContainerAspectRatio(aspectRatio)
+                    addChatMessage(`📺 Video loaded (${video.videoWidth}x${video.videoHeight}, ${aspectRatio.toFixed(2)}:1)`, 'system')
+                  }
+                }}
+                onError={(e) => {
+                  console.error('Video error:', e)
+                  addChatMessage(`❌ Error loading video: ${currentVideo.name}`, 'system')
+                }}
+              />
+            ) : loading ? (
+              <div style={{ 
+                width: '100%', 
+                height: '100%', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: '#535353',
+                fontSize: '18px'
+              }}>
+                🎬 Loading videos...
+              </div>
+            ) : (
+              <div style={{ 
+                width: '100%', 
+                height: '100%', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: '#535353',
+                fontSize: '18px',
+                flexDirection: 'column',
+                gap: '10px'
+              }}>
+                <div>📁 No videos found</div>
+                <div style={{ fontSize: '14px', opacity: 0.7 }}>
+                  Add video files to the media directory
+                </div>
+              </div>
+            )}
           </div>
           
           <div className="chat-section">

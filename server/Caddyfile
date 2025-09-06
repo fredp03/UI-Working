@@ -1,0 +1,19 @@
+{
+  # Production configuration with HTTPS
+}
+
+fredav-videoparty.freeddns.org {
+  encode zstd gzip
+
+  # Note: CORS headers are handled by the VideoParty server
+  # Only non-CORS security headers here to avoid duplicates
+  header {
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+    Permissions-Policy "autoplay=(), fullscreen=(), microphone=()"
+    # Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"  # enable after first cert
+  }
+
+  # Reverse proxy to local Node server
+  reverse_proxy localhost:8080
+}

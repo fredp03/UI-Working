@@ -531,6 +531,14 @@ body {
   align-self: flex-end;
 }
 
+.message-bubble.system {
+  background: #8C6C6C;
+  align-self: center;
+  font-size: clamp(9px, 1vw, 10px);
+  opacity: 0.9;
+  max-width: 95%;
+}
+
 .user-joined-indicator {
   position: absolute;
   top: clamp(40px, 4.5vh, 43px);
