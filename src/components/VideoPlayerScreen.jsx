@@ -75,6 +75,15 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
       if (!isChatVisible) {
         // Only update aspect ratio when chat is not visible
         pageItemsElement.style.aspectRatio = aspectRatio.toString()
+        pageItemsElement.style.width = 'clamp(678px, 67.4vw, 2158px)'
+      } else {
+        // If chat is visible, calculate expanded container
+        const chatWidthRatio = 0.25
+        const videoWidthRatio = 1 - chatWidthRatio
+        const newContainerAspectRatio = aspectRatio / videoWidthRatio
+        
+        pageItemsElement.style.aspectRatio = newContainerAspectRatio.toString()
+        pageItemsElement.style.width = 'clamp(889px, 88.5vw, 2830px)'
       }
       
       console.log('Updated container aspect ratio to:', aspectRatio.toFixed(3))
@@ -87,12 +96,23 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
     if (pageItemsElement) {
       const videoAspectRatio = parseFloat(pageItemsElement.getAttribute('data-video-aspect-ratio'))
       
-      if (isChatVisible) {
-        // When chat is visible, use the original wider aspect ratio
-        pageItemsElement.style.aspectRatio = '2919/1277'
+      if (isChatVisible && videoAspectRatio && videoAspectRatio > 0) {
+        // When chat is visible, calculate new aspect ratio to accommodate chat
+        // Chat takes fixed width, video keeps its aspect ratio
+        const chatWidthRatio = 0.25 // Chat takes about 25% of container width
+        const videoWidthRatio = 1 - chatWidthRatio
+        
+        // Calculate new container aspect ratio
+        // If video aspect ratio is W:H, and we want video to take 75% of container width,
+        // then container aspect ratio should be (W/0.75):H
+        const newContainerAspectRatio = videoAspectRatio / videoWidthRatio
+        
+        pageItemsElement.style.aspectRatio = newContainerAspectRatio.toString()
+        pageItemsElement.style.width = 'clamp(889px, 88.5vw, 2830px)' // Expanded width
       } else if (videoAspectRatio && videoAspectRatio > 0) {
-        // When chat is hidden, use the video's aspect ratio
+        // When chat is hidden, use the video's aspect ratio and normal width
         pageItemsElement.style.aspectRatio = videoAspectRatio.toString()
+        pageItemsElement.style.width = 'clamp(678px, 67.4vw, 2158px)'
       }
     }
   }, [isChatVisible])
@@ -184,7 +204,7 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
                 style={{ 
                   width: '100%', 
                   height: '100%', 
-                  objectFit: 'contain' // This will maintain aspect ratio
+                  objectFit: 'cover' // Fill container completely
                 }}
                 onLoadStart={() => console.log('Video loading started')}
                 onLoadedData={() => {
