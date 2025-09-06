@@ -395,14 +395,15 @@ body {
 }
 
 .chat-visible .video-player {
-  width: 75%; /* Video takes 75% of expanded container */
+  width: calc(75% - 10px); /* Video takes 75% of expanded container minus padding */
+  margin-right: 20px; /* Add spacing between video and chat */
 }
 
 .chat-section {
   position: absolute;
   right: 0;
   top: 0;
-  width: 25%; /* Chat takes 25% of expanded container */
+  width: calc(25% - 10px); /* Chat takes 25% of expanded container minus padding */
   height: 100%;
   background: rgba(138.69, 130.12, 95.84, 0.20);
   box-shadow: inset 0px 2px 5.3px rgba(0, 0, 0, 0.25), inset -1px -1px 2px #ffffffe6, inset 1px -1px 2px #59585633,
