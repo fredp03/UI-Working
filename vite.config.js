@@ -6,10 +6,10 @@ export default defineConfig({
   plugins: [react()],
   build: {
     rollupOptions: {
-      input: './index-react.html'
+      input: './index.html'
     }
   },
   server: {
-    open: './index-react.html'
+    open: './index.html'
   }
 })
