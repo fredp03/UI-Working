@@ -1,19 +1,266 @@
 import React, { useState, useRef, useEffect } from 'react'
 
-const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
+const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies }) => {
   const [isChatVisible, setIsChatVisible] = useState(false)
   const [chatMessage, setChatMessage] = useState('')
-  const [messages, setMessages] = useState([
-    { type: 'received', text: 'This is what a message received looks like' },
-    { type: 'sent', text: 'This is what a message sent looks like' },
-    { type: 'received', text: 'This is what a message received looks like when it uses two lines' },
-    { type: 'sent', text: 'This is what a message sent looks like when it uses two lines' }
-  ])
+  const [messages, setMessages] = useState([])
   const [currentVideo, setCurrentVideo] = useState(null)
   const [videos, setVideos] = useState([])
   const [loading, setLoading] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState('disconnected') // 'disconnected', 'connecting', 'connected'
+  const [isReceivingSync, setIsReceivingSync] = useState(false) // Prevent sync loops
+  const [isSyncing, setIsSyncing] = useState(false) // Manual sync loading state
+  const [hasVideoStarted, setHasVideoStarted] = useState(false) // Track if video has played
+  
   const chatMessagesRef = useRef(null)
   const videoRef = useRef(null)
+  const wsRef = useRef(null)
+  const syncTimeoutRef = useRef(null)
+  const lastSyncRef = useRef({ time: 0, timestamp: 0 })
+
+  // Function to get thumbnail URL based on video name
+  const getThumbnailUrl = (videoName) => {
+    if (!videoName) return null
+    // Try to match thumbnail by video name (case insensitive)
+    // Thumbnails are stored as "VideoName - 16x9.jpg"
+    return `http://localhost:8080/media/Images/Thumbnails/${encodeURIComponent(videoName)} - 16x9.jpg`
+  }
+
+  // WebSocket connection management
+  useEffect(() => {
+    if (!isActive) return
+
+    const connectWebSocket = () => {
+      try {
+        setConnectionStatus('connecting')
+        const wsUrl = `ws://localhost:8080/ws?roomId=shared&clientId=${currentUser}`
+        console.log('Connecting to WebSocket:', wsUrl)
+        
+        const ws = new WebSocket(wsUrl)
+        wsRef.current = ws
+
+        ws.onopen = () => {
+          console.log('WebSocket connected')
+          setConnectionStatus('connected')
+        }
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data)
+            console.log('Received sync message:', message)
+            handleSyncMessage(message)
+          } catch (error) {
+            console.error('Error parsing WebSocket message:', error)
+          }
+        }
+
+        ws.onclose = (event) => {
+          console.log('WebSocket disconnected:', event.code, event.reason)
+          setConnectionStatus('disconnected')
+          
+          // Attempt to reconnect after 3 seconds
+          setTimeout(() => {
+            if (isActive) {
+              connectWebSocket()
+            }
+          }, 3000)
+        }
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error)
+          setConnectionStatus('disconnected')
+        }
+      } catch (error) {
+        console.error('Failed to create WebSocket connection:', error)
+        setConnectionStatus('disconnected')
+      }
+    }
+
+    connectWebSocket()
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current)
+      }
+    }
+  }, [isActive, currentUser])
+
+  // Handle incoming sync messages
+  const handleSyncMessage = (message) => {
+    if (message.clientId === currentUser) return
+
+    // Handle chat messages
+    if (message.type === 'chat') {
+      addChatMessage(message.message, 'received', message.clientId)
+      return
+    }
+
+    // Handle sync requests - respond with current state
+    if (message.type === 'syncRequest') {
+      const video = videoRef.current
+      if (video && currentVideo) {
+        console.log('Responding to sync request with current state')
+        const syncResponse = {
+          type: 'syncResponse',
+          roomId: 'shared',
+          clientId: currentUser,
+          currentTime: video.currentTime,
+          paused: video.paused,
+          sentAtMs: Date.now(),
+          videoUrl: `http://localhost:8080${currentVideo.url}`
+        }
+        wsRef.current.send(JSON.stringify(syncResponse))
+      }
+      return
+    }
+
+    if (!videoRef.current) return
+
+    setIsReceivingSync(true)
+    
+    try {
+      const video = videoRef.current
+      const now = Date.now()
+      const networkDelay = (now - message.sentAtMs) / 1000
+      const adjustedTime = message.currentTime + (networkDelay * 0.5) // Compensate for network delay
+
+      switch (message.type) {
+        case 'loadVideo':
+        case 'syncResponse': // Handle manual sync responses the same as loadVideo
+          if (message.videoUrl && message.videoUrl !== video.src) {
+            // Find the video object from our videos list
+            const videoObject = videos.find(v => `http://localhost:8080${v.url}` === message.videoUrl)
+            if (videoObject) {
+              setCurrentVideo(videoObject)
+              setHasVideoStarted(false) // Reset video started state when switching videos
+            }
+          }
+          
+          if (message.type === 'syncResponse') {
+            setIsSyncing(false) // Clear syncing state when we receive a response
+          }
+          // Fall through to sync time and play state
+          
+        case 'play':
+        case 'pause':
+        case 'seek':
+        case 'timeSync':
+          // Sync playback time if drift is significant  
+          const currentTimeDrift = Math.abs(video.currentTime - adjustedTime)
+          if (currentTimeDrift > 0.2) { // Reduced tolerance to 200ms for tighter sync
+            console.log(`Syncing time: ${video.currentTime.toFixed(2)}s -> ${adjustedTime.toFixed(2)}s (drift: ${currentTimeDrift.toFixed(2)}s)`)
+            video.currentTime = adjustedTime
+          }
+
+          // Sync play/pause state
+          if (message.type === 'play' || (message.type === 'loadVideo' && !message.paused) || (message.type === 'syncResponse' && !message.paused)) {
+            if (video.paused) {
+              setHasVideoStarted(true) // Mark that video has started playing (remotely)
+              video.play().catch(e => console.log('Auto-play prevented:', e))
+            }
+          } else if (message.type === 'pause' || (message.type === 'loadVideo' && message.paused) || (message.type === 'syncResponse' && message.paused)) {
+            if (!video.paused) {
+              video.pause()
+            }
+          }
+
+          // Store sync reference for drift correction
+          lastSyncRef.current = {
+            time: adjustedTime,
+            timestamp: now,
+            paused: message.paused
+          }
+          break
+      }
+    } catch (error) {
+      console.error('Error handling sync message:', error)
+    } finally {
+      // Reset sync flag after a short delay to prevent immediate re-sync
+      setTimeout(() => setIsReceivingSync(false), 100)
+    }
+  }
+
+  // Send sync messages to other clients
+  const sendSyncMessage = (type, additionalData = {}) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || isReceivingSync) {
+      return
+    }
+
+    const video = videoRef.current
+    if (!video) return
+
+    const message = {
+      type,
+      roomId: 'shared',
+      clientId: currentUser,
+      currentTime: video.currentTime,
+      paused: video.paused,
+      sentAtMs: Date.now(),
+      ...additionalData
+    }
+
+    console.log('Sending sync message:', message)
+    wsRef.current.send(JSON.stringify(message))
+  }
+
+  // Manual sync function - requests current state from other user
+  const requestManualSync = () => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return
+    }
+
+    if (isSyncing) return // Prevent multiple sync requests
+
+    setIsSyncing(true)
+
+    // Send a sync request to get the current state from other users
+    const syncRequest = {
+      type: 'syncRequest',
+      roomId: 'shared',
+      clientId: currentUser,
+      sentAtMs: Date.now()
+    }
+
+    console.log('Requesting manual sync...')
+    wsRef.current.send(JSON.stringify(syncRequest))
+
+    // Reset syncing state after 3 seconds (timeout)
+    setTimeout(() => {
+      setIsSyncing(false)
+    }, 3000)
+  }
+
+  // Continuous drift correction during playback
+  useEffect(() => {
+    if (!isActive) return
+
+    const driftCorrectionInterval = setInterval(() => {
+      const video = videoRef.current
+      const lastSync = lastSyncRef.current
+      
+      if (!video || !lastSync.timestamp || video.paused || lastSync.paused) {
+        return
+      }
+
+      // Calculate expected time based on last sync
+      const timeSinceSync = (Date.now() - lastSync.timestamp) / 1000
+      const expectedTime = lastSync.time + timeSinceSync
+      const actualTime = video.currentTime
+      const drift = Math.abs(actualTime - expectedTime)
+
+      // Correct significant drift (> 300ms) for tighter sync
+      if (drift > 0.3) {
+        console.log(`Drift correction: ${actualTime.toFixed(2)}s -> ${expectedTime.toFixed(2)}s (drift: ${drift.toFixed(2)}s)`)
+        video.currentTime = expectedTime
+      }
+    }, 2000) // Check every 2 seconds
+
+    return () => clearInterval(driftCorrectionInterval)
+  }, [isActive])
 
   // Fetch videos from API when component becomes active
   useEffect(() => {
@@ -28,10 +275,76 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
       const zodiacVideo = videos.find(video => video.name.toLowerCase().includes('zodiac'))
       if (zodiacVideo) {
         setCurrentVideo(zodiacVideo)
-        addChatMessage(`🎬 Now playing: ${zodiacVideo.name}`, 'system')
+        
+        // Send loadVideo message to sync with other clients
+        setTimeout(() => {
+          sendSyncMessage('loadVideo', { 
+            videoUrl: `http://localhost:8080${zodiacVideo.url}` 
+          })
+        }, 1000) // Small delay to ensure video element is ready
       }
     }
   }, [videos, currentVideo])
+
+  // Reset video started state when current video changes
+  useEffect(() => {
+    setHasVideoStarted(false)
+  }, [currentVideo])
+
+  // Handle movie selection from movie selection screen
+  useEffect(() => {
+    if (selectedMovie && isActive) {
+      console.log('Loading selected movie:', selectedMovie)
+      setCurrentVideo(selectedMovie)
+      setHasVideoStarted(false)
+      
+      // Send sync message to other users if connected
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        setTimeout(() => {
+          sendSyncMessage('loadVideo', { 
+            videoUrl: `http://localhost:8080${selectedMovie.url}` 
+          })
+        }, 1000) // Small delay to ensure video element is ready
+      }
+    }
+  }, [selectedMovie, isActive])
+
+  // Video event handlers for synchronization
+  const handleVideoPlay = () => {
+    setHasVideoStarted(true) // Mark that video has started playing
+    if (!isReceivingSync) {
+      console.log('Local play event')
+      sendSyncMessage('play')
+    }
+  }
+
+  const handleVideoPause = () => {
+    if (!isReceivingSync) {
+      console.log('Local pause event')
+      sendSyncMessage('pause')
+    }
+  }
+
+  const handleVideoSeeked = () => {
+    if (!isReceivingSync) {
+      console.log('Local seek event')
+      sendSyncMessage('seek')
+    }
+  }
+
+  // Periodic time sync for playing videos
+  useEffect(() => {
+    if (!isActive) return
+
+    const timeSyncInterval = setInterval(() => {
+      const video = videoRef.current
+      if (video && !video.paused && !isReceivingSync) {
+        sendSyncMessage('timeSync')
+      }
+    }, 5000) // Send time sync every 5 seconds during playback
+
+    return () => clearInterval(timeSyncInterval)
+  }, [isActive, isReceivingSync])
 
   const fetchVideos = async () => {
     setLoading(true)
@@ -43,18 +356,17 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
         console.log('Videos loaded:', videoList)
       } else {
         console.error('Failed to fetch videos:', response.status)
-        addChatMessage('❌ Failed to load videos from server', 'system')
       }
     } catch (error) {
       console.error('Error fetching videos:', error)
-      addChatMessage('❌ Could not connect to video server', 'system')
     } finally {
       setLoading(false)
     }
   }
 
-  const addChatMessage = (text, type = 'sent') => {
-    const newMessage = { type, text }
+  const addChatMessage = (text, type = 'sent', sender = null) => {
+    const displayText = type === 'received' && sender ? `${sender}: ${text}` : text
+    const newMessage = { type, text: displayText }
     setMessages(prev => [...prev, newMessage])
     
     // Scroll to bottom
@@ -143,7 +455,20 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
 
   const handleChatSubmit = (e) => {
     if (e.key === 'Enter' && chatMessage.trim()) {
-      addChatMessage(chatMessage.trim(), 'sent')
+      const message = chatMessage.trim()
+      addChatMessage(message, 'sent')
+      
+      // Send chat message through WebSocket if connected
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'chat',
+          roomId: 'shared',
+          clientId: currentUser,
+          message: message,
+          sentAtMs: Date.now()
+        }))
+      }
+      
       setChatMessage('')
     }
   }
@@ -167,10 +492,34 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
           </div>
           
           <div className="right-side-buttons">
-            <div className="button server-connection">
-              <div className="status-dot"></div>
-              <div className="connection-text">Connected</div>
-            </div>
+            <button 
+              className="button server-connection"
+              onClick={requestManualSync}
+              disabled={connectionStatus !== 'connected' || isSyncing}
+              title={
+                connectionStatus !== 'connected' ? 'Not connected' :
+                isSyncing ? 'Syncing...' : 'Click to sync with other user'
+              }
+              style={{ 
+                cursor: (connectionStatus === 'connected' && !isSyncing) ? 'pointer' : 'not-allowed',
+                opacity: (connectionStatus === 'connected' && !isSyncing) ? 1 : 0.7
+              }}
+            >
+              <div 
+                className="status-dot" 
+                style={{ 
+                  backgroundColor: 
+                    isSyncing ? '#3b82f6' : // Blue when syncing
+                    connectionStatus === 'connected' ? '#22c55e' : 
+                    connectionStatus === 'connecting' ? '#f59e0b' : '#ef4444' 
+                }}
+              ></div>
+              <div className="connection-text">
+                {isSyncing ? 'Syncing...' :
+                 connectionStatus === 'connected' ? 'Synced' : 
+                 connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+              </div>
+            </button>
             
             <button className="button icon-button" onClick={onGoToMovies} title="Movie Button">
               <svg width="26" height="20" viewBox="0 0 26 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -198,6 +547,7 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
                 ref={videoRef}
                 className="video-placeholder" 
                 src={`http://localhost:8080${currentVideo.url}`}
+                poster={!hasVideoStarted ? getThumbnailUrl(currentVideo.name) : undefined}
                 controls
                 autoPlay={false}
                 preload="metadata"
@@ -206,6 +556,9 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
                   height: '100%', 
                   objectFit: 'cover' // Fill container completely
                 }}
+                onPlay={handleVideoPlay}
+                onPause={handleVideoPause}
+                onSeeked={handleVideoSeeked}
                 onLoadStart={() => console.log('Video loading started')}
                 onLoadedData={() => {
                   console.log('Video loaded successfully')
@@ -225,15 +578,19 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
                     const aspectRatio = video.videoWidth / video.videoHeight
                     
                     updateContainerAspectRatio(aspectRatio)
-                    addChatMessage(`📺 Video loaded (${video.videoWidth}x${video.videoHeight}, ${aspectRatio.toFixed(2)}:1)`, 'system')
+                    
+                    // Send loadVideo sync message when video metadata is ready
+                    if (!isReceivingSync) {
+                      sendSyncMessage('loadVideo', { 
+                        videoUrl: `http://localhost:8080${currentVideo.url}` 
+                      })
+                    }
                   }
                 }}
                 onError={(e) => {
                   console.error('Video error:', e)
-                  addChatMessage(`❌ Error loading video: ${currentVideo.name}`, 'system')
                 }}
-              />
-            ) : loading ? (
+              />) : loading ? (
               <div style={{ 
                 width: '100%', 
                 height: '100%', 
@@ -273,7 +630,9 @@ const VideoPlayerScreen = ({ isActive, currentUser, onGoToMovies }) => {
             </button>
 
             <div className="user-joined-indicator">
-              <span className="user-joined-text">{currentUser} has joined</span>
+              <span className="user-joined-text">
+                {currentUser} • {connectionStatus === 'connected' ? 'Synchronized' : 'Local Only'}
+              </span>
             </div>
 
             <div className="chat-messages" ref={chatMessagesRef}>

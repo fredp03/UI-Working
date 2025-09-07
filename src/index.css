@@ -627,6 +627,9 @@ body {
   background: #D9D9D9;
   border-radius: 5px;
   width: 100%;
+  aspect-ratio: 2/3; /* Standard movie poster aspect ratio */
+  position: relative;
+  overflow: hidden;
 }
 
 .poster-title {
@@ -644,19 +647,11 @@ body {
   bottom: clamp(48px, 6.1vh, 114px);
 }
 
-.poster-1 .poster-image {
-  height: clamp(215px, 27.3vh, 506px);
-}
-
 .poster-2 {
   width: clamp(171px, 14.1vw, 451px);
   height: clamp(293px, 37.2vh, 690px);
   left: clamp(137px, 11.3vw, 360px);
   bottom: clamp(20px, 2.6vh, 48px);
-}
-
-.poster-2 .poster-image {
-  height: clamp(270px, 34.3vh, 637px);
 }
 
 .poster-3 {
@@ -666,10 +661,6 @@ body {
   bottom: 0;
 }
 
-.poster-3 .poster-image {
-  height: clamp(311px, 39.5vh, 733px);
-}
-
 .poster-4 {
   width: clamp(171px, 14.1vw, 451px);
   height: clamp(293px, 37.2vh, 690px);
@@ -677,19 +668,11 @@ body {
   bottom: clamp(20px, 2.6vh, 48px);
 }
 
-.poster-4 .poster-image {
-  height: clamp(270px, 34.3vh, 637px);
-}
-
 .poster-5 {
   width: clamp(138px, 11.4vw, 364px);
   height: clamp(237px, 30.1vh, 559px);
   left: clamp(683px, 56.3vw, 1798px);
   bottom: clamp(48px, 6.1vh, 114px);
-}
-
-.poster-5 .poster-image {
-  height: clamp(215px, 27.3vh, 506px);
 }
 
 /* Responsive Design */

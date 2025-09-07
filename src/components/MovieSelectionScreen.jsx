@@ -1,17 +1,112 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 
 const MovieSelectionScreen = ({ isActive, onMovieSelect, onBack }) => {
-  const movies = [
-    { id: 1, title: 'Title' },
-    { id: 2, title: 'Title' },
-    { id: 3, title: 'Title' },
-    { id: 4, title: 'Title' },
-    { id: 5, title: 'Title' }
-  ]
+  const [movies, setMovies] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
-  const handleMovieClick = (movieId) => {
-    console.log(`Selected movie ${movieId}`)
-    onMovieSelect(movieId)
+  // Fetch videos from the server
+  useEffect(() => {
+    if (isActive) {
+      fetchMovies()
+    }
+  }, [isActive])
+
+  const fetchMovies = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await fetch('http://localhost:8080/api/videos')
+      if (response.ok) {
+        const videoList = await response.json()
+        setMovies(videoList)
+        console.log('Movies loaded:', videoList.length)
+      } else {
+        console.error('Failed to fetch movies:', response.status)
+        setError('Failed to load movies from server')
+      }
+    } catch (error) {
+      console.error('Error fetching movies:', error)
+      setError('Could not connect to movie server')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Function to get poster URL based on video name
+  const getPosterUrl = (videoName) => {
+    if (!videoName) return null
+    // Posters are stored as "VideoName - poster.jpg"
+    return `http://localhost:8080/media/Images/Posters/${encodeURIComponent(videoName)} - poster.jpg`
+  }
+
+  // Check if a movie has a poster available
+  const hasPoster = async (movieName) => {
+    try {
+      const response = await fetch(getPosterUrl(movieName), { method: 'HEAD' })
+      return response.ok
+    } catch {
+      return false
+    }
+  }
+
+  // Create poster slots with priority for movies that have posters
+  const getPosterSlots = () => {
+    if (movies.length === 0) return []
+
+    // Available poster names from the directory
+    const availablePosters = ['Oppenheimer', 'Sinners', 'Zodiac']
+    
+    // Find movies that have posters (more flexible matching)
+    const moviesWithPosters = movies.filter(movie => 
+      availablePosters.some(posterName => 
+        movie.name.toLowerCase().includes(posterName.toLowerCase()) ||
+        posterName.toLowerCase().includes(movie.name.toLowerCase())
+      )
+    )
+    
+    // Find movies without posters
+    const moviesWithoutPosters = movies.filter(movie => 
+      !availablePosters.some(posterName => 
+        movie.name.toLowerCase().includes(posterName.toLowerCase()) ||
+        posterName.toLowerCase().includes(movie.name.toLowerCase())
+      )
+    )
+
+    // Combine movies, prioritizing those with posters for center position
+    const orderedMovies = [...moviesWithPosters, ...moviesWithoutPosters]
+    
+    // Show all available movies (up to 5 positions)
+    const numSlots = Math.min(orderedMovies.length, 5)
+    
+    // Position priority: center first (3), then 2, 4, 1, 5
+    const positionOrder = [3, 2, 4, 1, 5]
+    
+    const slots = []
+    for (let i = 0; i < numSlots; i++) {
+      const movie = orderedMovies[i]
+      const position = positionOrder[i] || (i + 1)
+      
+      const hasPosterMatch = availablePosters.some(posterName => 
+        movie.name.toLowerCase().includes(posterName.toLowerCase()) ||
+        posterName.toLowerCase().includes(movie.name.toLowerCase())
+      )
+      
+      slots.push({
+        position: position,
+        movie: movie,
+        hasMovie: true,
+        hasPoster: hasPosterMatch
+      })
+    }
+    
+    // Sort by position for rendering
+    return slots.sort((a, b) => a.position - b.position)
+  }
+
+  const handleMovieClick = (movie) => {
+    console.log(`Selected movie: ${movie.name}`)
+    onMovieSelect(movie)
   }
 
   return (
@@ -49,16 +144,96 @@ const MovieSelectionScreen = ({ isActive, onMovieSelect, onBack }) => {
 
         <div className="background-frame">
           <div className="movie-poster-collection">
-            {movies.map((movie, index) => (
-              <div 
-                key={movie.id}
-                className={`movie-poster poster-${index + 1}`}
-                onClick={() => handleMovieClick(movie.id)}
-              >
-                <div className="poster-image"></div>
-                <div className="poster-title">{movie.title}</div>
+            {loading ? (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                width: '100%',
+                color: '#535353',
+                fontSize: '18px'
+              }}>
+                🎬 Loading movies...
               </div>
-            ))}
+            ) : error ? (
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                width: '100%',
+                color: '#ef4444',
+                fontSize: '18px',
+                flexDirection: 'column',
+                gap: '10px'
+              }}>
+                <div>❌ {error}</div>
+                <button 
+                  onClick={fetchMovies}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#333',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              getPosterSlots().map((slot) => (
+                <div 
+                  key={slot.position}
+                  className={`movie-poster poster-${slot.position}`}
+                  onClick={() => handleMovieClick(slot.movie)}
+                  style={{ 
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div 
+                    className="poster-image"
+                    style={{
+                      backgroundColor: '#2a2a2a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
+                    {slot.hasPoster ? (
+                      <img 
+                        src={getPosterUrl(slot.movie.name)}
+                        alt={`${slot.movie.name} poster`}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: 'center'
+                        }}
+                        onError={(e) => {
+                          e.target.style.display = 'none'
+                          e.target.parentElement.innerHTML = '<div style="color: #666; font-size: 24px; display: flex; align-items: center; justify-content: center; height: 100%;">🎬</div>'
+                        }}
+                      />
+                    ) : (
+                      <div style={{ 
+                        color: '#666', 
+                        fontSize: '24px', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        height: '100%' 
+                      }}>
+                        🎬
+                      </div>
+                    )}
+                  </div>
+                  <div className="poster-title">
+                    {slot.movie.name}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

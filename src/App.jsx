@@ -8,6 +8,7 @@ import MovieSelectionScreen from './components/MovieSelectionScreen'
 function App() {
   const [currentScreen, setCurrentScreen] = useState('user-select')
   const [currentUser, setCurrentUser] = useState('')
+  const [selectedMovie, setSelectedMovie] = useState(null)
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -58,8 +59,9 @@ function App() {
     setCurrentScreen('video-player')
   }
 
-  const handleMovieSelect = () => {
-    // For now, just return to video player
+  const handleMovieSelect = (movie) => {
+    console.log('Movie selected:', movie)
+    setSelectedMovie(movie)
     setCurrentScreen('video-player')
   }
 
@@ -84,6 +86,7 @@ function App() {
       <VideoPlayerScreen 
         isActive={currentScreen === 'video-player'}
         currentUser={currentUser}
+        selectedMovie={selectedMovie}
         onGoToMovies={handleGoToMovies}
       />
       
