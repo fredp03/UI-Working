@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react'
 
 const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies }) => {
+  // Environment variables for API and WebSocket URLs
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+  const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080'
+
   const [isChatVisible, setIsChatVisible] = useState(false)
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState([])
@@ -23,7 +27,7 @@ const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies 
     if (!videoName) return null
     // Try to match thumbnail by video name (case insensitive)
     // Thumbnails are stored as "VideoName - 16x9.jpg"
-    return `http://localhost:8080/media/Images/Thumbnails/${encodeURIComponent(videoName)} - 16x9.jpg`
+    return `${API_BASE_URL}/media/Images/Thumbnails/${encodeURIComponent(videoName)} - 16x9.jpg`
   }
 
   // WebSocket connection management
@@ -33,7 +37,7 @@ const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies 
     const connectWebSocket = () => {
       try {
         setConnectionStatus('connecting')
-        const wsUrl = `ws://localhost:8080/ws?roomId=shared&clientId=${currentUser}`
+        const wsUrl = `${WS_BASE_URL}/ws?roomId=shared&clientId=${currentUser}`
         console.log('Connecting to WebSocket:', wsUrl)
         
         const ws = new WebSocket(wsUrl)
@@ -111,7 +115,7 @@ const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies 
           currentTime: video.currentTime,
           paused: video.paused,
           sentAtMs: Date.now(),
-          videoUrl: `http://localhost:8080${currentVideo.url}`
+          videoUrl: `${API_BASE_URL}${currentVideo.url}`
         }
         wsRef.current.send(JSON.stringify(syncResponse))
       }
@@ -133,7 +137,7 @@ const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies 
         case 'syncResponse': // Handle manual sync responses the same as loadVideo
           if (message.videoUrl && message.videoUrl !== video.src) {
             // Find the video object from our videos list
-            const videoObject = videos.find(v => `http://localhost:8080${v.url}` === message.videoUrl)
+            const videoObject = videos.find(v => `${API_BASE_URL}${v.url}` === message.videoUrl)
             if (videoObject) {
               setCurrentVideo(videoObject)
               setHasVideoStarted(false) // Reset video started state when switching videos
@@ -279,7 +283,7 @@ const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies 
         // Send loadVideo message to sync with other clients
         setTimeout(() => {
           sendSyncMessage('loadVideo', { 
-            videoUrl: `http://localhost:8080${zodiacVideo.url}` 
+            videoUrl: `${API_BASE_URL}${zodiacVideo.url}` 
           })
         }, 1000) // Small delay to ensure video element is ready
       }
@@ -302,7 +306,7 @@ const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies 
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         setTimeout(() => {
           sendSyncMessage('loadVideo', { 
-            videoUrl: `http://localhost:8080${selectedMovie.url}` 
+            videoUrl: `${API_BASE_URL}${selectedMovie.url}` 
           })
         }, 1000) // Small delay to ensure video element is ready
       }
@@ -349,7 +353,7 @@ const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies 
   const fetchVideos = async () => {
     setLoading(true)
     try {
-      const response = await fetch('http://localhost:8080/api/videos')
+      const response = await fetch(`${API_BASE_URL}/api/videos`)
       if (response.ok) {
         const videoList = await response.json()
         setVideos(videoList)
@@ -546,7 +550,7 @@ const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies 
               <video 
                 ref={videoRef}
                 className="video-placeholder" 
-                src={`http://localhost:8080${currentVideo.url}`}
+                src={`${API_BASE_URL}${currentVideo.url}`}
                 poster={!hasVideoStarted ? getThumbnailUrl(currentVideo.name) : undefined}
                 controls
                 autoPlay={false}
@@ -582,7 +586,7 @@ const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies 
                     // Send loadVideo sync message when video metadata is ready
                     if (!isReceivingSync) {
                       sendSyncMessage('loadVideo', { 
-                        videoUrl: `http://localhost:8080${currentVideo.url}` 
+                        videoUrl: `${API_BASE_URL}${currentVideo.url}` 
                       })
                     }
                   }

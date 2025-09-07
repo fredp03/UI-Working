@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react'
 
 const MovieSelectionScreen = ({ isActive, onMovieSelect, onBack }) => {
+  // Environment variables for API URLs
+  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+
   const [movies, setMovies] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -16,7 +19,7 @@ const MovieSelectionScreen = ({ isActive, onMovieSelect, onBack }) => {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch('http://localhost:8080/api/videos')
+      const response = await fetch(`${API_BASE_URL}/api/videos`)
       if (response.ok) {
         const videoList = await response.json()
         setMovies(videoList)
@@ -37,7 +40,7 @@ const MovieSelectionScreen = ({ isActive, onMovieSelect, onBack }) => {
   const getPosterUrl = (videoName) => {
     if (!videoName) return null
     // Posters are stored as "VideoName - poster.jpg"
-    return `http://localhost:8080/media/Images/Posters/${encodeURIComponent(videoName)} - poster.jpg`
+    return `${API_BASE_URL}/media/Images/Posters/${encodeURIComponent(videoName)} - poster.jpg`
   }
 
   // Check if a movie has a poster available
