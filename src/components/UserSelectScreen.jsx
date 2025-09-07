@@ -1,6 +1,20 @@
-import React from 'react'
+import React, { useEffect } from 'react'
+import anime from 'animejs/lib/anime.es.js'
 
 const UserSelectScreen = ({ isActive, onUserSelect }) => {
+  useEffect(() => {
+    if (isActive) {
+      anime.set('.user-card', { opacity: 0, translateY: 20 })
+      anime({
+        targets: '.user-card',
+        opacity: 1,
+        translateY: 0,
+        delay: anime.stagger(100),
+        easing: 'easeOutQuad'
+      })
+    }
+  }, [isActive])
+
   return (
     <div className={`screen ${isActive ? 'active' : ''}`}>
       <div className="select-user-card">
