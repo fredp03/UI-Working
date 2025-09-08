@@ -160,8 +160,8 @@ MEDIA_DIR=$SCRIPT_DIR/media
 # Server port
 PORT=8080
 
-# Allowed CORS origin (React dev server)
-ORIGIN=http://localhost:5173
+# Allowed CORS origin (React dev server and Netlify)
+ORIGIN=http://localhost:5173,https://fredaline-independent-cinema.netlify.app
 
 # Optional shared token for API authentication
 # SHARED_TOKEN=your-secret-token-here
