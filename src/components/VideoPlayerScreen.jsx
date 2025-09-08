@@ -353,13 +353,25 @@ const VideoPlayerScreen = ({ isActive, currentUser, selectedMovie, onGoToMovies 
   const fetchVideos = async () => {
     setLoading(true)
     try {
-      const response = await fetch(`${API_BASE_URL}/api/videos`)
+      console.log('Fetching videos from:', `${API_BASE_URL}/api/videos`)
+      const response = await fetch(`${API_BASE_URL}/api/videos`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      })
+      
+      console.log('Response status:', response.status)
+      console.log('Response headers:', [...response.headers.entries()])
+      
       if (response.ok) {
         const videoList = await response.json()
         setVideos(videoList)
         console.log('Videos loaded:', videoList)
       } else {
-        console.error('Failed to fetch videos:', response.status)
+        console.error('Failed to fetch videos:', response.status, response.statusText)
       }
     } catch (error) {
       console.error('Error fetching videos:', error)

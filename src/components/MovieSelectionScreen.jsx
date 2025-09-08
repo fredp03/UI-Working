@@ -19,18 +19,30 @@ const MovieSelectionScreen = ({ isActive, onMovieSelect, onBack }) => {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch(`${API_BASE_URL}/api/videos`)
+      console.log('Fetching movies from:', `${API_BASE_URL}/api/videos`)
+      const response = await fetch(`${API_BASE_URL}/api/videos`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      })
+      
+      console.log('Response status:', response.status)
+      console.log('Response headers:', [...response.headers.entries()])
+      
       if (response.ok) {
         const videoList = await response.json()
         setMovies(videoList)
         console.log('Movies loaded:', videoList.length)
       } else {
-        console.error('Failed to fetch movies:', response.status)
-        setError('Failed to load movies from server')
+        console.error('Failed to fetch movies:', response.status, response.statusText)
+        setError(`Failed to load movies from server (${response.status})`)
       }
     } catch (error) {
       console.error('Error fetching movies:', error)
-      setError('Could not connect to movie server')
+      setError(`Could not connect to movie server: ${error.message}`)
     } finally {
       setLoading(false)
     }

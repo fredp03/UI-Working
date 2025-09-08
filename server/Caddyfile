@@ -1,19 +1,41 @@
 {
-  # Production configuration with HTTPS
+  # Global options
+  auto_https off
+  servers {
+    protocols h1 h2
+  }
 }
 
 fredav-videoparty.freeddns.org {
+  # Enable compression
   encode zstd gzip
 
-  # Note: CORS headers are handled by the VideoParty server
-  # Only non-CORS security headers here to avoid duplicates
+  # CORS and security headers (comprehensive for Safari)
   header {
+    # CORS headers for Safari compatibility
+    Access-Control-Allow-Origin "https://fredaline-independent-cinema.netlify.app"
+    Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers "Authorization, Range, Content-Type, Accept, X-Requested-With"
+    Access-Control-Expose-Headers "Accept-Ranges, Content-Length, Content-Range"
+    Access-Control-Allow-Credentials "true"
+    Access-Control-Max-Age "86400"
+    
+    # Security headers
     X-Content-Type-Options "nosniff"
     Referrer-Policy "no-referrer"
     Permissions-Policy "autoplay=(), fullscreen=(), microphone=()"
-    # Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"  # enable after first cert
+    X-Frame-Options "SAMEORIGIN"
   }
 
+  # Handle preflight requests
+  @options method OPTIONS
+  respond @options 204
+
   # Reverse proxy to local Node server
-  reverse_proxy localhost:8080
+  reverse_proxy localhost:8080 {
+    header_up Host {host}
+    header_up X-Real-IP {remote}
+    header_up X-Forwarded-For {remote}
+    header_up X-Forwarded-Proto {scheme}
+  }
 }

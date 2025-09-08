@@ -7,5 +7,16 @@
   to = "/index.html"
   status = 200
 
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; media-src 'self' https: blob: data:; connect-src 'self' https: wss: ws: http: blob:; font-src 'self' data:; object-src 'none';"
+
 [build.environment]
   NODE_VERSION = "18"
+  # Set these environment variables in Netlify dashboard
+  VITE_API_URL = "https://fredav-videoparty.freeddns.org"
+  VITE_WS_URL = "wss://fredav-videoparty.freeddns.org"

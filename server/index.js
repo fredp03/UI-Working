@@ -30,24 +30,38 @@ const SHARED_TOKEN = process.env.SHARED_TOKEN
 // CORS middleware with preflight handling
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://fredav.netlify.app'
+  'https://fredav.netlify.app',
+  'https://fredaline-independent-cinema.netlify.app',
+  'https://fredav-videoparty.freeddns.org',
+  'http://fredav-videoparty.freeddns.org'
 ]
 
 app.use((req, res, next) => {
   const origin = req.headers.origin
   
+  // Log CORS requests for debugging
+  console.log(`${req.method} ${req.path} - Origin: ${origin}`)
+  
+  // For development, allow any localhost origin
+  const isLocalhost = origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))
+  
   // Allow both development and production origins
-  if (allowedOrigins.includes(origin)) {
+  if (allowedOrigins.includes(origin) || isLocalhost) {
     res.header('Access-Control-Allow-Origin', origin)
+  } else if (!origin) {
+    // Some Safari requests don't include Origin header
+    res.header('Access-Control-Allow-Origin', '*')
   }
   
-  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-  res.header('Access-Control-Allow-Headers', 'Authorization, Range, Content-Type')
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.header('Access-Control-Allow-Headers', 'Authorization, Range, Content-Type, Accept, X-Requested-With')
   res.header('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range')
   res.header('Access-Control-Allow-Credentials', 'true')
+  res.header('Access-Control-Max-Age', '86400')
   
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
+    console.log(`CORS preflight for ${req.path} from ${origin}`)
     return res.status(204).end()
   }
   
@@ -75,6 +89,18 @@ const authMiddleware = (req, res, next) => {
 // API Routes
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, timestamp: Date.now() })
+})
+
+// CORS test endpoint (no auth required)
+app.get('/api/cors-test', (req, res) => {
+  const origin = req.headers.origin
+  console.log('CORS test endpoint called from origin:', origin)
+  res.json({ 
+    ok: true, 
+    origin: origin,
+    userAgent: req.headers['user-agent'],
+    timestamp: Date.now() 
+  })
 })
 
 app.get('/api/videos', authMiddleware, async (req, res) => {
@@ -145,16 +171,23 @@ app.post('/api/videos/process-compatibility', authMiddleware, async (req, res) =
 // Handle preflight requests for media endpoint
 app.options('/media/*', (req, res) => {
   const origin = req.headers.origin
-  if (allowedOrigins.includes(origin)) {
-    res.set({
-      'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Headers': 'Range, Content-Type, Authorization',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Credentials': 'true',
-      'Access-Control-Max-Age': '86400'
-    });
+  const isLocalhost = origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))
+  
+  const headers = {
+    'Access-Control-Allow-Headers': 'Range, Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Max-Age': '86400'
   }
-  res.status(200).end();
+  
+  if (allowedOrigins.includes(origin) || isLocalhost) {
+    headers['Access-Control-Allow-Origin'] = origin
+  } else if (!origin) {
+    headers['Access-Control-Allow-Origin'] = '*'
+  }
+  
+  res.set(headers)
+  res.status(200).end()
 });
 
 // Media streaming with Range support
@@ -190,6 +223,8 @@ app.get('/media/*', authMiddleware, (req, res) => {
 
     // Set CORS headers dynamically based on request origin
     const origin = req.headers.origin
+    const isLocalhost = origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))
+    
     const corsHeaders = {
       'Content-Type': mimeType,
       'Accept-Ranges': 'bytes',
@@ -207,8 +242,11 @@ app.get('/media/*', authMiddleware, (req, res) => {
       corsHeaders['Content-Disposition'] = 'inline'
     }
     
-    if (allowedOrigins.includes(origin)) {
+    // More permissive CORS for media files
+    if (allowedOrigins.includes(origin) || isLocalhost) {
       corsHeaders['Access-Control-Allow-Origin'] = origin
+    } else if (!origin) {
+      corsHeaders['Access-Control-Allow-Origin'] = '*'
     }
     
     res.set(corsHeaders)
